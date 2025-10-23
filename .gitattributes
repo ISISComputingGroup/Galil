@@ -1,8 +1,30 @@
-#Which files need CRLF handling
-# Default is auto
+# Set the default behavior, in case people don't have core.autocrlf set.
 * text=auto
 
-# But we can help Git, because we now about some file extensions
-*.bat  text eol=crlf
-*.jpeg  -text
-*.pdf   -text
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.c text
+*.cpp text
+*.h text
+*.hpp text
+*.java text
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text
+*.db text
+*.dbd text
+*.template text
+*.substitutions text
+*.gmc text
+*.dmc text
+*.req text
+
+# Declare files that will always have CRLF line endings on checkout.
+*.sln text eol=crlf
+
+# Denote all files that are truly binary and should not be modified.
+*.png binary
+*.jpg binary
+*.class binary
+*.vi binary
+*.pdf binary

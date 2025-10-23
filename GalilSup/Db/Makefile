@@ -17,6 +17,7 @@ DB += $(patsubst ../%, %, $(wildcard ../*.dmc))
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add
 # <anyname>_template = <templatename>
+DB += galil_userdef_records8.template
 
 # Galil program code for e.g. homing, installed to $(TOP)/gmc
 
@@ -30,10 +31,25 @@ DB += $(patsubst ../%, %, $(wildcard ../*.dmc))
 # 7. If using single thread avoid use of blocking commands (eg. WT100, AD, etc)
 
 # Example galil code templates
-#GMC += galil_Default_Footer.gmc  galil_Default_Header.gmc  galil_Home_Home.gmc  galil_Home_ForwLimit.gmc
-#GMC += galil_Home_RevLimit.gmc  galil_Piezo_Home.gmc
+# These are renamed and installed to a GMC directory for historic reasons
+# See README.md for details
+GMC += README.md
+GMC += $(patsubst ../%.dmc, %.gmc, $(wildcard ../*.dmc))
 
 include $(TOP)/configure/RULES
 #----------------------------------------
 #  ADD RULES AFTER THIS LINE
 
+ifdef T_A
+
+%.gmc : ../%.dmc
+	$(CP) $< $@
+
+ifneq ($(BASE3_14),YES)
+galil_userdef_records8.template$(DEP) : ../galil_userdef_records.template ../galil_userdef_records8.substitutions
+endif
+
+galil_userdef_records8.template ../O.Common/galil_userdef_records8.template : ../galil_userdef_records.template ../galil_userdef_records8.substitutions
+	$(MSI3_15) -V -o $@ -S ../galil_userdef_records8.substitutions ../galil_userdef_records.template
+
+endif

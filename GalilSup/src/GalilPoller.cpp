@@ -30,6 +30,8 @@
 
 using namespace std; //cout ostringstream vector string
 
+static const double NO_MOTION_POLLING_FACTOR = 5.0; // factor to reduce polling rate by when no motion is occurring
+
 #include "GalilController.h"
 
 GalilPoller::GalilPoller(GalilController *pcntrl)
@@ -58,6 +60,7 @@ void GalilPoller::run(void)
    GalilCSAxis *pCSAxis;//CSAxis structure
    double time_taken;	//Time taken last poll cycle
    double sleep_time;	//Calculated time to sleep in synchronous mode
+   bool moving, any_moving;
 
    //Loop until shutdown
    while (true) {
@@ -76,6 +79,7 @@ void GalilPoller::run(void)
             //Do callbacks for GalilController, GalilAxis records
             //Do all ParamLists/axis whether user called GalilCreateAxis or not
             //because analog/binary IO data are stored/organized in ParamList just same as axis data 
+            any_moving = false;
             for (i=0; i<MAX_GALIL_AXES + MAX_GALIL_CSAXES; i++) {
                if (i < MAX_GALIL_AXES) {
                   //Retrieve GalilAxis instance i
@@ -90,7 +94,10 @@ void GalilPoller::run(void)
                   else {
                      //Update GalilAxis, and upper layers, using retrieved datarecord
                      //Update records with analog/binary data
-                     pAxis->poller();
+                     pAxis->poller(moving);
+                    //Update GalilAxis, and upper layers, using retrieved datarecord
+                    //Update records with analog/binary data
+                    any_moving = (any_moving || moving);
                   }
                }
                else {
@@ -115,8 +122,11 @@ void GalilPoller::run(void)
                sleep_time = pC_->updatePeriod_/1000.0 - time_taken;
                //Must sleep in synchronous mode to release lock for other threads
                sleep_time = (sleep_time < 0.000) ? 0.001 : sleep_time;
+               // drop polling frequency if nothing moving. We will be signalled when motion is requested on an axis
+               // and then should continue at higher poll rate until motion is completed
+               sleep_time *= (any_moving ? 1.0 : NO_MOTION_POLLING_FACTOR);
                if (sleep_time >= 0.001)
-                  epicsThreadSleep(sleep_time);
+                  pC_->motion_started_.wait(sleep_time);
             }
          } //Connected_
          else //Not connected so sleep a little
@@ -132,7 +142,13 @@ void GalilPoller::run(void)
 
       //Kill loop as IOC is shuttingDown
       if (shutdownPoller_)  //Break from loop
+      {
+        //Tell controller to stop async data record
+        if (pC_->async_records_) {
+           //pC_->gco_->recordsStart(0); //  tutn off DR ?
+        }
          break;
+      }
    }//while
 }
 

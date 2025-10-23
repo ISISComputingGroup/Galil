@@ -36,3 +36,8 @@ create_monitor_set("GalilTest_kinematics.req", 30,"P1=DMC01:")
 
 # end
 
+## if you are using RealCOM mode with moxa nport on windows then serial parameters
+## are set by the application rather than on the port. Uncomment the following if
+## using hardware flow control with the GALIL 
+## do not use/enable software (xon/xoff) flow control - see comments in GalilController.cpp
+#asynSetOption("GALILSYNC0", 0, "crtscts", "Y");

@@ -25,7 +25,7 @@
 
 #define KPMAX			1023.875
 #define KDMAX			4095.875
-#define HOMING_TIMEOUT		3.5
+#define HOMING_TIMEOUT	(getenv("HOMING_TIMEOUT") != NULL ? atof(getenv("HOMING_TIMEOUT")) : 3.5)
 
 //Home type allowed
 #define HOME_NONE 0
@@ -94,7 +94,7 @@ public:
 
   //These are the methods that are new to this class
   //Poller for axis
-  asynStatus poller(void);
+  asynStatus poller(bool& moving);
 
   //Store settings, and implement defaults
   asynStatus setDefaults(int limit_as_home, char *enables_string, int switch_type);
@@ -236,6 +236,8 @@ public:
 private:
 
   void axisStatusShutdown(void);        //Function to shutdown axis status thread.
+  double getGalilAxisVal(const char* name);
+  bool checkEncoderMotorSync(bool correct_motor);
 
   GalilController *pC_;      		/**< Pointer to the asynMotorController to which this axis belongs.
                                 	*   Abbreviated because it is used very frequently */
@@ -278,6 +280,8 @@ private:
   double motor_position_;		//aux encoder or step count register
   double encoder_position_;		//main encoder register
   double last_encoder_position_;	//main encoder register stored from previous poll.  Used to detect movement.
+  double smoothed_encoder_position_;	// smoothed encoder value
+  double encoder_smooth_factor_;
   double velocity_;			//Motor velocity readback
   double error_;			//Position error readback
   int direction_;			//Movement direction
@@ -337,7 +341,8 @@ private:
   bool syncEncodedStepperAtStopExecuted_;//Synchronize stepper with encoder at stop execution complete
   bool syncEncodedStepperAtEncSent_;	//Synchronize stepper with encoder at encoder move message sent
   bool encoderSwapped_;			//Have the main, and auxiliary encoders been swapped by DFx=1
-
+  double motor_dly_;
+  bool first_poll_;
   bool restoreProfile_;			//Should profileBackupPositions_ be copied into profilePositions_ after orofile built complete? 
                                 	//True for all GalilAxis involved in CSAxis profile build, set false at built end
   double *profileBackupPositions_;	//Profile positions backup for this axis, restored after profile is built
@@ -346,6 +351,8 @@ private:
   bool axisStatusRunning_;		//Flag to indicate if axis status thread is running
   epicsEventId axisStatusShutdown_;	//Signal indicating axis status thread has shutdown
   epicsEventId axisStatusShutRequest_;	//Request axisStatus thread shutdown
+
+  std::string homingRoutineName = "";
 
 friend class GalilController;
 friend class GalilCSAxis;

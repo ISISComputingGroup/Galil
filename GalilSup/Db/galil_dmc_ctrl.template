@@ -548,6 +548,7 @@ record(stringout,"$(P)SEND_STR_CMD")
 	field(DTYP, "asynOctetWrite")
 	field(OUT,  "@asyn($(PORT),0)USER_OCTET")
 }
+alias("$(P)SEND_STR_CMD","$(P)SEND_CMD_STR")
 
 record(waveform,"$(P)SEND_STR_MON")
 {
@@ -566,6 +567,70 @@ record(ai,"$(P)SEND_STRVAL_MON")
 	field(DESC, "Output of last SEND_CMD_STR")
 	field(DTYP, "asynFloat64")
 	field(INP,  "@asyn($(PORT),0)USER_OCTET_VAL")
+}
+
+record(bo, "$(P)DISABLE_ALL_MOTORS") {
+    field(FLNK, "$(P)_DISABLE_ALL_MOTORS.PROC")
+}
+
+record(event, "$(P)_DISABLE_ALL_MOTORS") {
+    field(DESC, "Disable all motors")
+    field(VAL, "DisableAllMotors")
+    field(DTYP, "Soft Channel")
+}
+
+
+##
+## power off detection
+##
+
+## write a new detection value, autosave SP so we know what 
+## should be there after a restart
+record(ao,"$(P)PWRDET:SP") {
+    field(DESC, "Set Power off detect value")
+    field(DTYP, "asynFloat64")
+    field(OUT, "@asyn($(PORT),0)USER_VAR pwrdet")
+	field(SCAN, "Passive")
+    info(autosaveFields_pass0, "VAL")
+}
+
+record(ai,"$(P)PWRDET") {
+    field(DESC, "Get Power off detect value")
+    field(DTYP, "asynFloat64")
+    field(INP,  "@asyn($(PORT),0)USER_VAR pwrdet")
+	field(SCAN, "10 second")
+	field(FLNK, "$(P)PWRDET:ALERT.PROC")
+}
+
+## 0 = ok, 1 = problem
+record(calcout,"$(P)PWRDET:ALERT") {
+    field(DESC, "Power off detect check")
+	field(SCAN, "Passive")
+    field(INPA, "$(P)PWRDET")
+	field(INPB, "$(P)PWRDET:SP")
+	field(CALC, "A!=B")
+	field(OOPT, "When Zero")
+	field(OUT, "$(P)PWRDET:TIMER.PROC")
+    info(archive, "VAL")
+}
+
+## reset to OK state after handling power off
+record(bo,"$(P)PWRDET:RESET:SP") {
+    field(DESC, "Power off detection reset")
+	field(SCAN, "Passive")
+	field(FLNK, "$(P)PWRDET:SP.PROC")
+}
+
+## how often we should set a new test value
+## A % 360 means 3600 seconds as we are on 10 second scan link
+record(calcout, "$(P)PWRDET:TIMER") {
+	field(DESC, "Set new PWRDET test value")
+	field(CALC, "A % 360; A := A + 1")
+	field(INPA, "0")
+	field(OOPT, "When Zero")
+	field(DOPT, "Use OCAL")
+	field(OCAL, "CEIL(RNDM*100)+1")
+	field(OUT, "$(P)PWRDET:SP PP")
 }
 
 #end

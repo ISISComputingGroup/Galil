@@ -24,8 +24,12 @@
 # Mark Clift
 # email: padmoz@tpg.com.au
 
+# just the motor record has $(GPORT) that defaults to $(PORT) - this allows us to
+# connect the motor record to an EPICS simulated motor separately to the rest
+# of the driver
 grecord(motor,"$(P)$(M)")
 {
+	field(ASG, "$(ASG=DEFAULT)")
 	field(DTYP,"asynMotor")
 	field(VMAX,"$(VMAX=0)")
 	field(VBAS,"0")
@@ -35,7 +39,7 @@ grecord(motor,"$(P)$(M)")
 	field(BVEL,"$(BVEL)")
 	field(BACC,"$(BACC)")
 	field(HVEL,"$(VELO)")
-	field(OUT, "@asyn($(PORT),$(ADDR))")
+	field(OUT, "@asyn($(GPORT=$(PORT)),$(ADDR))")
 	field(MRES,"$(MRES=0)")
 	field(ERES,"$(ERES=0)")
 	field(PREC,"$(PREC)")
@@ -47,6 +51,7 @@ grecord(motor,"$(P)$(M)")
 	field(UREV,"$(UREV=0)")
 	field(OFF,"$(OFF=0)")
 	field(RTRY,"$(RTRY=0)")
+	field(RSTM,"$(RSTM=Never)")
 	field(TWV,"1")
 	field(DESC,"$(DESC='')")
 	field(SCAN,"Passive")
@@ -56,7 +61,14 @@ grecord(motor,"$(P)$(M)")
 	field(PCOF,"$(PCOF=0)")
 	field(ICOF,"$(ICOF=0)")
 	field(DCOF,"$(DCOF=0)")
+	field(HLSV,"MINOR")
+	info(archive,"0.02 VAL RBV DVAL OFF MSTA DIR CNEN MOVN DMOV MISS RCNT")
+	info(alarm,"Motors")
 }
+
+alias("$(P)$(M)", "$(P)$(M):SP")
+
+alias("$(P)$(M)", "$(P)$(M):SP:RBV")
 
 record(transform,"$(P)$(M)_ableput") {
 	field(CLCB,"a")
@@ -72,6 +84,26 @@ record(bo,"$(P)$(M)_able") {
 	field(OUT,"$(P)$(M)_ableput.A PP MS")
 	field(ZNAM,"Enable")
 	field(ONAM,"Disable")
+}
+
+record(transform,"$(P)$(M)_lockput") {
+  field(CLCB, "a = 0 ? 3 : 0")
+  field(CMTB, "SPMG value")
+  field(CMTA, "locked value")
+  field(CLCC,"b")
+  field(CLCD,"a")
+  field(CLCE,"b")
+  field(OUTC,"$(P)$(M).SPMG NPP NMS")
+  field(OUTD,"$(P)$(M).DISP NPP NMS")
+  field(OUTE,"$(P)$(M).SPMG NPP NMS")
+}
+
+record(bo,"$(P)$(M)_lock") {
+  field(DESC,"Motor lock")
+#  field(PINI,"YES")
+  field(OUT,"$(P)$(M)_lockput.A PP MS")
+  field(ZNAM,"Unlocked")
+  field(ONAM,"Locked")
 }
 
 record(calcout, "$(P)$(M)_vCh") {
@@ -352,5 +384,6 @@ record(ao, "$(P)$(M)_VALOUT_SP")
 	field(OUT,  "$(P)$(M).VAL PP")
 	field(FLNK, "$(P)$(M)")
 }
+
 
 # end

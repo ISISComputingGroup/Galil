@@ -25,7 +25,7 @@
 #define finite(x) _finite(x)
 #endif /* _WIN32/_WIN64 */
 
-#define BEGIN_TIMEOUT 0.5
+#define BEGIN_TIMEOUT 2.0
 #define AASCII 65
 #define IASCII 73
 #define QASCII 81
@@ -135,7 +135,17 @@
 #define GalilSSIConnectedString		"MOTOR_SSI_CONNECTED"
 #define GalilEncoderStallTimeString	"MOTOR_ENCODER_STALL_TIME"
 #define GalilStepSmoothString		"MOTOR_STEPSMOOTH"
+#define GalilITCSmoothString		"MOTOR_ITCSMOOTH"
 #define GalilMotorTypeString		"MOTOR_TYPE"
+
+#define GalilHomingRoutineAString	"HMRNAM_A"
+#define GalilHomingRoutineBString	"HMRNAM_B"
+#define GalilHomingRoutineCString	"HMRNAM_C"
+#define GalilHomingRoutineDString	"HMRNAM_D"
+#define GalilHomingRoutineEString	"HMRNAM_E"
+#define GalilHomingRoutineFString	"HMRNAM_F"
+#define GalilHomingRoutineGString	"HMRNAM_G"
+#define GalilHomingRoutineHString	"HMRNAM_H"
 
 #define GalilEtherCatCapableString	"CONTROLLER_ECATCAPABLE"
 #define GalilEtherCatNetworkString	"CONTROLLER_ECAT_NETWORK"
@@ -153,6 +163,7 @@
 #define GalilDirectionString		"MOTOR_DIR"
 #define GalilDmovString			"MOTOR_DMOV"
 #define GalilUseEncoderString		"MOTOR_UEIP"
+#define GalilUseReadbackString		"MOTOR_URIP"
 #define GalilStopPauseMoveGoString	"MOTOR_SPMG"
 #define GalilPremString			"MOTOR_PREM"
 #define GalilPostString			"MOTOR_POST"
@@ -181,6 +192,9 @@
 #define GalilLimitDisableString		"MOTOR_LIMIT_DISABLE"
 #define GalilLimitConsistentString	"MOTOR_LIMIT_CONSISTENT"
 #define GalilEncoderToleranceString     "MOTOR_ENCODER_TOLERANCE"
+
+#define GalilBiasVoltageString		"MOTOR_BIASVOLTAGE"
+#define GalilPoleString		        "MOTOR_POLE"
 
 #define GalilMainEncoderString		"MOTOR_MAIN_ENCODER"
 #define GalilAuxEncoderString		"MOTOR_AUX_ENCODER"
@@ -234,6 +248,10 @@
 
 #define GalilEthAddrString	  	"CONTROLLER_ETHADDR"
 #define GalilSerialNumString	  	"CONTROLLER_SERIALNUM"
+#define GalilMoveCommandString	"MOVE_COMMAND"
+#define GalilMotorEncoderSyncTolString	"MOTOR_ENC_TOL"
+#define GalilEncoderSmoothString	"ENCODER_SMOOTH"
+#define GalilMotorDlyString			"MOTOR_DLY"
 
 #define GalilStatusPollDelayString	"MOTOR_STATUS_POLL_DELAY"
 
@@ -331,9 +349,10 @@ public:
 
   string address_;			//address string
   string model_;			//model string
+  static int init_state_;
 
   //Class constructor
-  GalilController(const char *portName, const char *address, double updatePeriod);
+  GalilController(const char *portName, const char *address, double updatePeriod, int quiet_start);
 
   asynStatus async_writeReadController(const char *output, char *input, size_t maxChars, size_t *nread, double timeout);
   asynStatus async_writeReadController(void);
@@ -413,6 +432,7 @@ public:
   void write_gen_codefile(const char* suffix);
   asynStatus read_codefile(const char *code_file);
   asynStatus read_codefile_part(const char *code_file, MAC_HANDLE* mac_handle);
+  asynStatus read_codefile_hf(const char *code_files);
   asynStatus get_integer(int function, epicsInt32 *value, int axisNo);
   asynStatus get_double(int function, epicsFloat64 *value, int axisNo);
   void profileThread();
@@ -468,6 +488,7 @@ public:
   asynStatus prepSyncStartOnlyMoves(void);
 
   void shutdownController();
+  bool shutdownRequested() { return shutdown_requested_; }
   virtual ~GalilController();
 
 protected:
@@ -621,9 +642,25 @@ protected:
   int GalilSerialNum_;
   int GalilStatusPollDelay_;
 //Add new parameters here
+  int GalilMoveCommand_;
+  int GalilMotorEncoderSyncTol_;
+  int GalilITCSmooth_;
+  int GalilBiasVoltage_;
+  int GalilPole_;
+  int GalilUseReadback_;
+  int GalilEncoderSmooth_;
+  int GalilMotorDly_;
 
   int GalilCommunicationError_;
   #define LAST_GALIL_PARAM GalilCommunicationError_
+  int GalilHomingRoutineA_;
+  int GalilHomingRoutineB_;
+  int GalilHomingRoutineC_;
+  int GalilHomingRoutineD_;
+  int GalilHomingRoutineE_;
+  int GalilHomingRoutineF_;
+  int GalilHomingRoutineG_;
+  int GalilHomingRoutineH_;
 
 private:
 
@@ -653,7 +690,9 @@ private:
 
   int burn_program_;			//Burn program options that user gave to GalilStartController
 					
-  int consecutive_timeouts_;		//Used for connection management
+  bool connect_fail_reported_;		//Has initial connection failure been reported to iocShell
+  int consecutive_acquire_timeouts_;		//Used for connection management
+  int consecutive_read_timeouts_;		//Used for connection management
   bool code_assembled_;			//Has code for the GalilController hardware been assembled (ie. is card_code_ all set to send)
   double updatePeriod_;			//Period between data records in ms
   bool async_records_;			//Are the data records obtained async(DR), or sync (QR)
@@ -696,6 +735,17 @@ private:
   string digital_code_ = "";
   string card_code_ = "";
   string user_code_ = "";
+  
+  static int compareCode(std::string dc, std::string uc);
+  static void compressCode(std::string& s);
+  static void findReplace(std::string& s, const std::string& toFind, const std::string& toReplace);
+  
+  void stopThreads();
+  void stopAxes();
+  int quiet_start_;
+  bool shutdown_requested_;
+  epicsEvent motion_started_;
+  epicsMutex pollLock_;
 
   char asynccmd_[MAX_GALIL_STRING_SIZE];	//holds the assembled Galil cmd string
   char asyncresp_[MAX_GALIL_DATAREC_SIZE];	//For asynchronous messages including datarecord
@@ -725,6 +775,9 @@ private:
   friend class GalilAxis;
   friend class GalilCSAxis;
   friend class GalilPoller;
+  
+  bool checkGalilThreads();
+  bool checkGalilThread(int thread);
   friend class GalilConnector;
   friend void connectCallback(asynUser *pasynUser, asynException exception);
 };

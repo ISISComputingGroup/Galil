@@ -1,0 +1,37 @@
+NO***************PIN HOLE SELECTOR*****************
+NO**********Execute in own thread******************
+NO**********Based on analog input******************
+#HOMEA0
+SHA
+homesp = 4096; 'set the homing speed
+dir=-1; 'set the homing direction
+ACA=1024;DCA=1024;SPA=1024
+JGA = dir*homesp;
+BGA; 'begin the motion in axis A
+' MG "  HOMING..";
+WT 1000;
+#hmLoop1;
+IF (@AN[5]>5);
+ JP #hmLoop1;
+ELSE;
+ WT 500;
+ STA;
+ AMA;
+ WT 100
+ SHA
+ WT 100
+ homesp = 256;
+ dir=dir*-1;
+ JGA = dir*homesp;
+ BGA;
+#hmLoop2;
+ IF (@AN[5]>5);
+  JP #hmLoop2;
+ ELSE;
+  STA; 'stop motion in axis A
+  enHome=_TPA;
+'  MG "  F.O. HOME LOCATED. Position =",_TPA;
+  AMA;
+ ENDIF;
+ENDIF;
+EN;
