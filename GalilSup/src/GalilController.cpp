@@ -419,7 +419,6 @@
 //                  Merge in support for 3040 and 3140 amplifiers
 // 16/10/2024 M.Clift
 //                  Fix change text entry widgets to string type in galil_csmotor_kinematics.adl
-//
 // 17/10/2024 M.Clift
 //                  Add support for motor record SET field to GalilCSAxis
 // 13/01/2025 M.Rivers
@@ -430,16 +429,23 @@
 //                  Add GalilDummy.cpp to create the GalilSupport registrar entry for systems without C++11
 //                  Changed src/Makefile to build the real driver if HAVE_C++11 is true (the default) and the dummy driver if it is false.
 //                  Added CONFIG_SITE.Common.$(EPICS_HOST_ARCH) for a few systems that don't have C++11.
-// 
 // 13/01/2025 M.Clift
 //                  Add acceleration capped at controller maximum for independent moves
-//
 // 16/01/2025 M.Clift
 //                  Fix unknown amplifier messages at ioc start when no controller
 // 24/01/2025 R.Riley, M.Rivers
 //                  Fix DMOV set true whilst controller still outputting step pulses that occurred
 //                  when the step smoothing factor (motor_extras) set higher than controller default
-//
+// 10/03/2025 M.Clift
+//                  Fix GalilAddCode to remove REM lines and replace empty lines in custom code with '
+//                  Fix GalilReplaceHomeCode to remove REM lines and replace empty in custom code lines with '
+//                  Fix GalilStartController to remove REM lines and replace empty in custom code lines with '
+// 10/03/2025 M.Clift
+//                  Fix add rio.dmc code for rio.  Running code on rio makes it stable
+// 27/03/2025 M.Clift
+//                  Change/increase timeout for user console commands known to take a long time
+//                  Add command console monitor PV $(P):SEND_STR_MON will now show controller error strings
+//                  Fix multi-thread access condition causing segfault during controller reconnect in UDP mode
 
 #include <stdio.h>
 #include <math.h>
@@ -479,7 +485,7 @@ using namespace std; //cout ostringstream vector string
 #include <epicsExport.h>
 
 static const char *driverName = "GalilController";
-static const char *driverVersion = "3-6-101";
+static const char *driverVersion = "3-6-108";
 
 static void GalilProfileThreadC(void *pPvt);
 static void GalilArrayUploadThreadC(void *pPvt);
@@ -1385,42 +1391,9 @@ void GalilController::connected(void)
   if (code_assembled_)
      {
      //This is reconnect
-     //Put poller to sleep for GalilStartController
-     unlock();
-     poller_->sleepPoller();
-     lock();
      //Deliver and start the code on controller
      GalilStartController(code_file_, burn_program_, thread_mask_);
      }
-  else
-     {
-     //This is initial connect
-     //Try async udp mode unless user specfically wants sync tcp mode
-     if (try_async_)
-        {
-        //Start async data record transmission on controller
-        sprintf(cmd_, "DR %.0f, %d", updatePeriod_, udpHandle_ - AASCII);
-        status = sync_writeReadController();
-        if (status)
-           {
-           async_records_ = false; //Something went wrong
-           setCtrlError("Asynchronous UDP failed, switching to TCP synchronous");
-           }
-        else
-           async_records_ = true; //All ok
-        }
-     }
-
-  //Set connection that will receive unsolicited messages
-  if (async_records_)
-     sprintf(cmd_, "CF %c", udpHandle_);
-  else
-     sprintf(cmd_, "CF %c", syncHandle_);
-  status = sync_writeReadController();
-
-  //Set most signficant bit for unsolicited bytes
-  strcpy(cmd_, "CW 1");
-  status = sync_writeReadController();
 
   callParamCallbacks();
 }
@@ -4726,9 +4699,21 @@ asynStatus GalilController::writeOctet(asynUser *pasynUser, const char*  value, 
   /* Set the parameter and readback in the parameter library. */
   if (function == GalilUserOctet_)
      {
-     //Send the command	
+     //Set default response to empty string
+     setStringParam(GalilUserOctet_, "");
+     //Check user command for commands known to take a long time, increase timeout accordingly
+     if (((value_s.find("BZ") != string::npos) && (value_s.find("=") != string::npos)) || 
+          value_s.find("BP") != string::npos || value_s.find("BN") != string::npos || 
+          value_s.find("BV") != string::npos) {
+        //Increase timeout for user command
+        timeout_ = 3;
+     }
+     //Send the user command	
      epicsSnprintf(cmd_, sizeof(cmd_), "%s", value_s.c_str());
-     if ( (status = sync_writeReadController()) == asynSuccess )
+     status = sync_writeReadController();
+     //User command complete, set timeout back to default 1
+     timeout_ = 1;
+     if (status == asynSuccess)
         {
         //Set readback value(s) = response from controller
         //String monitor
@@ -4747,8 +4732,13 @@ asynStatus GalilController::writeOctet(asynUser *pasynUser, const char*  value, 
         }
      else
         {
-        //Set readback value = response from controller
-        setStringParam(GalilUserOctet_, "error");
+        //User command failed, get error message from controller
+        strcpy(cmd_, "TC1");
+        if ( (status = sync_writeReadController()) == asynSuccess )
+           {
+           //Set readback value = response from controller
+           setStringParam(GalilUserOctet_, resp_);
+           }
         }
      }
   else   
@@ -5623,7 +5613,11 @@ void GalilController::acquireDataRecord(void)
 
   //Force disconnect if any errors
   if (consecutive_acquire_timeouts_ > ALLOWED_TIMEOUTS)
+     //Disconnect
      disconnect();
+     //Due to error, put poller to sleep at end of this cycle
+     poller_->sleepPoller(false);
+  }
 
   //If no errors, copy the data
   if (!recstatus_ && connected_)
@@ -6426,21 +6420,29 @@ void GalilController::GalilReplaceHomeCode(char *axis, string filename) {
          inpos = codeStart;
          // Read provided file line by line, and add to code buffer
          while (getline(file, line)) {
-            if (line.compare("\n") != 0) {
-
+            //Skip REM lines
+            if (line.find("REM") != string::npos) {
+               continue;
+            }         
+            // Put the new line character back
+            line = line + '\n';
+            //Replace empty lines with ' apostrophe
+            if (line.compare("\n") == 0) {
+               line = "'\n";
+            }
+            else {
                // Check read line for $(AXIS) macro
                while ((codeStart = line.find("$(AXIS)")) != string::npos) {
                   // Replace any found $(AXIS) macro with specified axis
-                  if (codeStart != string::npos)
+                  if (codeStart != string::npos) {
                      line.replace(codeStart, 7, axis);
+                  }
                }
-               // Put the new line character back
-               line = line + '\n';
-               // Add custom code line to code
-               thread_code_.insert(inpos, line);
-               // Increment inpos to next insert position
-               inpos = inpos + line.length();
             }
+            // Add custom code line to code
+            thread_code_.insert(inpos, line);
+            // Increment inpos to next insert position
+            inpos = inpos + line.length();
          }
          // Done reading, close the file
          file.close();
@@ -6506,28 +6508,34 @@ void GalilController::GalilAddCode(int section, string filename) {
 
       //Read provided file, add to specified code buffer
       while (getline(file, line)) {
-         if (line.compare("\n") != 0) {
-            //Put the new line character back
-            line = line + '\n';
-            //Add line to specified code section
-            if (!section)
-               card_code_ += line;
-            if (section == 2)
-               limit_code_ += line;
-            if (section == 3)
-               digital_code_ += line;
-            if (section == 1 && inpos != string::npos) {
-               // Check read line for $(AXIS) macro
-               while ((found = line.find("$(AXIS)")) != string::npos) {
-                  // Replace any found $(AXIS) macro with found axis
-                  if (found != string::npos)
-                     line.replace(found, 7, string(1, axis));
-               }
-               //Add line to specified code section
-               thread_code_.insert(inpos, line);
-               //Increment inpos to next insert position
-               inpos = inpos + line.length();
+         //Skip REM lines
+         if (line.find("REM") != string::npos) {
+            continue;
+         }         
+         // Put the new line character back
+         line = line + '\n';
+         //Replace empty lines with ' apostrophe
+         if (line.compare("\n") == 0) {
+            line = "'\n";
+         }
+         //Add line to specified code section
+         if (!section)
+            card_code_ += line;
+         if (section == 2)
+            limit_code_ += line;
+         if (section == 3)
+            digital_code_ += line;
+         if (section == 1 && inpos != string::npos) {
+            // Check read line for $(AXIS) macro
+            while ((found = line.find("$(AXIS)")) != string::npos) {
+               // Replace any found $(AXIS) macro with found axis
+               if (found != string::npos)
+                  line.replace(found, 7, string(1, axis));
             }
+            //Add line to specified code section
+            thread_code_.insert(inpos, line);
+            //Increment inpos to next insert position
+            inpos = inpos + line.length();
          }
       }
       // Done reading, close the file
@@ -7058,60 +7066,61 @@ asynStatus GalilController::read_codefile_hf(const char *code_files)
 
 asynStatus GalilController::read_codefile_part(const char *code_file, MAC_HANDLE* mac_handle)
 {
-  int i = 0;
-  char file[MAX_FILENAME_LEN];
-  FILE *fp;
+  string line;
+  string user_code = "";
+  int status = asynSuccess;
+  
   //local temp code buffers
   int max_size = MAX_GALIL_AXES * (THREAD_CODE_LEN+LIMIT_CODE_LEN+INP_CODE_LEN);
-  char* user_code = (char*)calloc(max_size,sizeof(char));
   char* user_code_exp = (char*)calloc(max_size,sizeof(char));
 
-  if (strcmp(code_file,"")!=0) {
-     strcpy(file, code_file);
-     fp = fopen(file,"rt");
-     if (fp != NULL) {
-        //Read the specified galil code
-        while (!feof(fp)) {
-           user_code[i] = fgetc(fp);
-           i++;
+  if (strcmp(code_file, "") != 0) {
+    ifstream file(code_file);  //Input file stream
+    // Test if file opened
+    if (file.is_open()) {
+      // Read provided file line by line
+      while (getline(file, line)) {
+        // Skip REM lines
+        if (line.find("REM") != string::npos) {
+          continue;
         }
-        fclose(fp);
-        user_code[i] = '\0';
-	
-        //Filter code
-        for (i=0;i<(int)strlen(user_code);i++) {
-           //Filter out any REM lines
-           if (user_code[i]=='R' && user_code[i+1]=='E' && user_code[i+2]=='M') {
-              while (user_code[i]!='\n' && user_code[i]!=EOF)
-                 i++;
-           }
+        // Put the new line character back
+        line = line + '\n';
+        //Replace empty lines with ' apostrophe
+        if (line.compare("\n") == 0) {
+          line = "'\n";
         }
-	
-        //Terminate the code buffer, we dont want the EOF character
-        user_code[i-1] = '\0';
-        //Load galil code into the GalilController instance
-        if (mac_handle != NULL) {// substitute macro definitios for e.g. $(AXIS)
-           macExpandString(mac_handle, user_code, user_code_exp, max_size);
-           //Copy code into GalilController temporary area
-           user_code_ += user_code_exp;
-        }
-        else {
-           //Copy code into GalilController temporary area
-           user_code_ += user_code;
-        }
-     }
-     else {
-        if (rio_)
-           errlogPrintf("\nread_codefile_part: Can't open user code file \"%s\"\n\n", code_file);
-        else
-           errlogPrintf("\nread_codefile_part: Can't open user code file \"%s\", using generated code\n\n", code_file);
-        return asynError;
-     }
+        // Add code line to user_code buffer
+        user_code += line;
+      }
+      // Done reading, close the file
+      file.close();
+      //Load galil code into the GalilController instance
+      if (mac_handle != NULL) {// substitute macro definitios for e.g. $(AXIS)
+        macExpandString(mac_handle, user_code.c_str(), user_code_exp, max_size);
+        //Copy code into GalilController temporary area
+        user_code_ += user_code_exp;
+      }
+      else {
+        //Copy code into GalilController temporary area
+        user_code_ += user_code;
+      }
+    }
+    else {
+      if (rio_) {
+        errlogPrintf("\nread_codefile_part: Can't open user code file \"%s\"\n\n", code_file);
+      }
+      else {
+        errlogPrintf("\nread_codefile_part: Can't open user code file \"%s\", using generated code\n\n", code_file);
+      }  
+      // Can't open specified file      
+     status = asynError;
+    }
   }
-
-  free(user_code);
+  // Free user_code_exp
   free(user_code_exp);
-  return asynSuccess;
+  // Return status
+  return (asynStatus)status;
 }
 
 asynStatus GalilController::drvUserCreate(asynUser *pasynUser, const char* drvInfo, const char** pptypeName, size_t* psize)
