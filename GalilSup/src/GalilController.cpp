@@ -5613,11 +5613,12 @@ void GalilController::acquireDataRecord(void)
 
   //Force disconnect if any errors
   if (consecutive_acquire_timeouts_ > ALLOWED_TIMEOUTS)
+     {
      //Disconnect
      disconnect();
      //Due to error, put poller to sleep at end of this cycle
      poller_->sleepPoller(false);
-  }
+     }
 
   //If no errors, copy the data
   if (!recstatus_ && connected_)
