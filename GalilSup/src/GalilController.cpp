@@ -5163,7 +5163,6 @@ void GalilController::processUnsolicitedMesgs(void)
       {
       //Terminate the buffer
       rawbuf[len] = '\0';
-      std::cerr << "processing unsolicited message " << rawbuf << std::endl;
       //Take backup before splitting into tokens
       string rawbufOriginal = rawbuf;
       //Break message into tokens: name value name value    etc.
@@ -5624,7 +5623,11 @@ void GalilController::acquireDataRecord(void)
         //Write the QR query to controller
         recstatus_ = pSyncOctet_->write(pSyncOctetPvt_, pasynUserSyncGalil_, cmd_, 3, &nwrite);
         if (!recstatus_) {//Solicited data record includes an extra colon at the end
+            if (true /*rand() % 100 != 0*/) {
            recstatus_ = readDataRecord(resp_, datarecsize_ + 1); //Get the record
+            } else {
+                recstatus_ = asynTimeout;
+            }
         } else {
            std::cerr << "acquireDataRecord: failed to send QR" << std::endl;
         }
@@ -5866,12 +5869,12 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
      //Any here did not end in a \n - discard or send anyway?
      if (j != 0) {
          std::cerr << "sync_writeReadController(): after success - Discarded unsolicited message: " << mesg << " length " << j << std::endl;
-         std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
+         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
          //sendUnsolicitedMessage(mesg);
      }
      if (m != 0) {
          std::cerr << "sync_writeReadController(): after success - Discarded bytes: " << rawToEscapedString(discard, m) << " length " << m << std::endl;
-         std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
+         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
      }
      }//write ok
   return status;

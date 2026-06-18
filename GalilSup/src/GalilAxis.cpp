@@ -2189,7 +2189,7 @@ void GalilAxis::checkHoming(void)
       
       if (homed == 1)
       {
-            std::cerr << "Looks like homing completed OK but unsolicited message from controller got lost" << std::endl;
+            std::cerr << "Looks like homing completed OK but unsolicited message from controller got lost for axis " << axisName_ << std::endl;
             // execute logic as per GalilController::processUnsolicitedMesgs
             this->homedExecuted_ = false;
             this->pollRequest_.send((void*)&MOTOR_HOMED, sizeof(int));
