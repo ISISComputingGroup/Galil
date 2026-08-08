@@ -5867,7 +5867,7 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
 {
   const char *functionName="sync_writeReadController";
   size_t nread = 0;
-  static std::atomic<int> call_count = 0;
+  static std::atomic<int> call_count(0);
   int status;
   size_t len;
   static const char* debug_file_name = macEnvExpand("$(GALIL_DEBUG_FILE=)");
