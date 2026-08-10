@@ -644,7 +644,7 @@ GalilController::GalilController(const char *portName, const char *address, doub
                          (int)(ASYN_CANBLOCK | ASYN_MULTIDEVICE),
                          (int)1, // autoconnect
                          (int)0, (int)0),  // Default priority and stack size
-  numAxes_(0), unsolicitedQueue_(MAX_GALIL_AXES, MAX_GALIL_STRING_SIZE), default_timeout_(1)
+  numAxes_(0), unsolicitedQueue_(MAX_GALIL_AXES, MAX_GALIL_STRING_SIZE), default_timeout_(1), sync_WRC_call_count_(0)
 {
   struct Galilmotor_enables *motor_enables = NULL;	//Convenience pointer to GalilController motor_enables[digport]
   string mesg;              //Controller mesg
@@ -5867,7 +5867,6 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
 {
   const char *functionName="sync_writeReadController";
   size_t nread = 0;
-  static std::atomic<int> call_count(0);
   int status;
   size_t len;
   static const char* debug_file_name = macEnvExpand("$(GALIL_DEBUG_FILE=)");
@@ -5875,7 +5874,7 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
 //  if (!this->havelock()) {
 //      std::cerr << "sync_writeReadController problem 1" << std::endl;
 //  }
-  if (++call_count != 1) {
+  if (++sync_WRC_call_count_ != 1) {
       std::cerr << "sync_writeReadController problem 2" << std::endl;
   }
   //Simply return asynSuccess if not connected
@@ -5883,7 +5882,7 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
   if (!connected_ && !testQuery)
      {
      strcpy(resp_, "");
-     --call_count;
+     --sync_WRC_call_count_;
      return asynSuccess;
      }
 
@@ -5899,7 +5898,7 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
      }
   else //Command too long
   {
-      --call_count;
+      --sync_WRC_call_count_;
       return asynError;
   }
 
@@ -5930,7 +5929,7 @@ asynStatus GalilController::sync_writeReadController(bool testQuery, bool logCom
      fprintf(debug_file, "%s (%d) %s: controller=\"%s\" command=\"%s\", response=\"%s\", status=%s\n", 
 	      time_buffer, getpid(), functionName, address_.c_str(), cmd_, resp_, (status == asynSuccess ? "OK" : "ERROR"));
      }
-  --call_count;
+  --sync_WRC_call_count_;
   return (asynStatus)status;
 }
 

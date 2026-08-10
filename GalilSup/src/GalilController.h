@@ -822,6 +822,8 @@ private:
 
   struct Galilmotor_enables motor_enables_[MAX_GALIL_AXES];//Stores the motor enable disable interlock digital IO setup, only first 8 digital in ports supported
 
+  std::atomic<int> sync_WRC_call_count_;
+
   friend class GalilAxis;
   friend class GalilCSAxis;
   friend class GalilPoller;
