@@ -715,14 +715,7 @@ GalilController::GalilController(const char *portName, const char *address, doub
   createParam(GalilMotorTypeString, asynParamInt32, &GalilMotorType_);
   createParam(GalilBrushTypeString, asynParamInt32, &GalilBrushType_);
 
-  createParam(GalilHomingRoutineAString, asynParamOctet, &GalilHomingRoutineA_);
-  createParam(GalilHomingRoutineBString, asynParamOctet, &GalilHomingRoutineB_);
-  createParam(GalilHomingRoutineCString, asynParamOctet, &GalilHomingRoutineC_);
-  createParam(GalilHomingRoutineDString, asynParamOctet, &GalilHomingRoutineD_);
-  createParam(GalilHomingRoutineEString, asynParamOctet, &GalilHomingRoutineE_);
-  createParam(GalilHomingRoutineFString, asynParamOctet, &GalilHomingRoutineF_);
-  createParam(GalilHomingRoutineGString, asynParamOctet, &GalilHomingRoutineG_);
-  createParam(GalilHomingRoutineHString, asynParamOctet, &GalilHomingRoutineH_);
+  createParam(GalilHomingRoutineString, asynParamOctet, &GalilHomingRoutine_);
 
   createParam(GalilEtherCatCapableString, asynParamInt32, &GalilEtherCatCapable_);
   createParam(GalilEtherCatNetworkString, asynParamInt32, &GalilEtherCatNetwork_);
@@ -1287,6 +1280,8 @@ void GalilController::setParamDefaults(void)
 
   //Default controller error message to null string
   setStringParam(0, GalilCtrlError_, "");
+
+  setIntegerParam(GalilUserArrayUpload_, 0);
 }
 
 // extract the controller ethernet address from the output of the galil TH command
@@ -4879,14 +4874,6 @@ asynStatus GalilController::writeOctet(asynUser *pasynUser, const char*  value, 
            }
         }
      }
-  else if (function >= GalilHomingRoutineA_ && function <= GalilHomingRoutineH_)
-     {
-      GalilAxis* pAxis = getAxis(pasynUser);	//Retrieve the axis instance
-      if (pAxis != nullptr) {
-          std::string homingRoutineName = pAxis->homingRoutineName;
-          setStringParam(function, homingRoutineName);
-      }
-     }
   else if (function >= GalilCSMotorForward_ && function <= GalilCSMotorReverseH_)
      {
      //User has entered a new kinematic transform equation
@@ -6912,10 +6899,10 @@ void GalilController::GalilStartController(char *code_file, int burn_program, in
        pAxis = getAxis(axisList_[i] - AASCII);
        if (!pAxis) continue;
        if (i < homingRoutineNames.size()) {
-           pAxis->homingRoutineName = homingRoutineNames[i];
+           pAxis->setStringParam(GalilHomingRoutine_, homingRoutineNames[i].c_str());
        }
        else {
-           pAxis->homingRoutineName = "";
+           pAxis->setStringParam(GalilHomingRoutine_, "");
        }
    }
 
@@ -7096,7 +7083,6 @@ void GalilController::GalilStartController(char *code_file, int burn_program, in
          pAxis->limitsDirState_ = unknown;
          //Pass motor/limits consistency to paramList
          setIntegerParam(pAxis->axisNo_, GalilLimitConsistent_, pAxis->limitsDirState_);
-         pAxis->homingRoutineName = homingRoutineNames[i];
       }
 
       //Retrieve controller time base
@@ -7569,37 +7555,37 @@ void GalilController::InitializeDataRecord(void)
 
 double GalilController::sourceValue(const std::vector<char>& record, const std::string& source)
 {
-	try
-	{
-		const Source& s = map.at(source); //use at() function so silent insert does not occur if bad source string is used.
-		int return_value = 0;
-		if (s.type[0] == 'U')  //unsigned
-			switch (s.type[1])
-		{
-			case 'B':  return_value = *(unsigned char*)(&record[s.byte]);  break;
-			case 'W':  return_value = *(unsigned short*)(&record[s.byte]);  break;
-			case 'L':  return_value = *(unsigned int*)(&record[s.byte]);  break;
-		}
-		else //s.type[0] == 'S'  //signed
-			switch (s.type[1])
-		{
-			case 'B':  return_value = *(char*)(&record[s.byte]);  break;
-			case 'W':  return_value = *(short*)(&record[s.byte]);  break;
-			case 'L':  return_value = *(int*)(&record[s.byte]);  break;
-		}
+    // want to avoid silent insert if bad source string is used.
+    const auto it = map.find(source);
+    if (it == map.end())
+    {
+        return 0.0; // bad source
+    }
+    const Source& s = it->second;
+    int return_value = 0;
+    if (s.type[0] == 'U')  //unsigned
+        switch (s.type[1])
+    {
+        case 'B':  return_value = *(unsigned char*)(&record[s.byte]);  break;
+        case 'W':  return_value = *(unsigned short*)(&record[s.byte]);  break;
+        case 'L':  return_value = *(unsigned int*)(&record[s.byte]);  break;
+    }
+    else //s.type[0] == 'S'  //signed
+        switch (s.type[1])
+    {
+        case 'B':  return_value = *(char*)(&record[s.byte]);  break;
+        case 'W':  return_value = *(short*)(&record[s.byte]);  break;
+        case 'L':  return_value = *(int*)(&record[s.byte]);  break;
+    }
 
-		if (s.bit >= 0) //this is a bit field
-		{
-			bool bTRUE = s.scale > 0; //invert logic if scale is <= 0  
-			return return_value & (1 << s.bit) ? bTRUE : !bTRUE; //check the bit
-		}
-		else
-			return (return_value / s.scale) + s.offset;
-
-	}
-	catch (const std::out_of_range& e) //bad source
-	{
-		return 0.0;
+    if (s.bit >= 0) //this is a bit field
+    {
+        bool bTRUE = s.scale > 0; //invert logic if scale is <= 0  
+        return return_value & (1 << s.bit) ? bTRUE : !bTRUE; //check the bit
+    }
+    else
+    {
+        return (return_value / s.scale) + s.offset;
 	}
 }
 
