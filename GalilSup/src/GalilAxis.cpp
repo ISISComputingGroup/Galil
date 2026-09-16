@@ -225,8 +225,6 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
    //Default event timeout
    requestedTimeout_ = BEGIN_TIMEOUT * multiplier;
 
-   homingRoutineName = "";
-
    //Store switch type setting for motor enable/disable function			       
    switch_type_ = (switch_type > 0) ? 1 : 0;
 
@@ -1861,17 +1859,18 @@ asynStatus GalilAxis::getStatus(void)
          strcpy(src, "_TEx");
          src[3] = axisName_;
          error_ = pC_->sourceValue(pC_->recdata_, src);
-         pC_->getDoubleParam(axisNo_, pC_->GalilError_, &errorlast);
-         if (error_ != errorlast)
+         if ( pC_->getDoubleParam(axisNo_, pC_->GalilError_, &errorlast) ||
+             (error_ != errorlast) ) {
             pC_->setDoubleParam(axisNo_, pC_->GalilError_, error_);
+         }
          //Servo motor velocity
          strcpy(src, "_TVx");
          src[3] = axisName_;
          velocity_ = pC_->sourceValue(pC_->recdata_, src);
          //Adjust velocity given controller time base setting
          velocity_ *= pC_->timeMultiplier_;
-         pC_->getDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, &velocitylast);
-         if (velocity_ != velocitylast) {
+         if ( pC_->getDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, &velocitylast) ||
+              (velocity_ != velocitylast) ) {
             pC_->setDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, velocity_);
             pC_->getDoubleParam(axisNo_, pC_->GalilEncoderResolution_, &eres);
             pC_->setDoubleParam(axisNo_, pC_->GalilMotorVelocityEGU_, velocity_ * eres);
@@ -3602,8 +3601,8 @@ void GalilAxis::axisStatusThread()
 
   while (true) {
     //Retrieve required parameters
-    status = pC_->getIntegerParam(axisNo_, pC_->GalilSSICapable_, &ssiCapable);
-    status |= pC_->getIntegerParam(axisNo_, pC_->GalilBISSCapable_, &bissCapable);
+    status = pC_->getIntegerParam(pC_->GalilSSICapable_, &ssiCapable);
+    status |= pC_->getIntegerParam(pC_->GalilBISSCapable_, &bissCapable);
 
     if (event == epicsEventWaitTimeout && !shuttingDown_) {
        if (ssiCapable == 1 && !status && !shuttingDown_) {

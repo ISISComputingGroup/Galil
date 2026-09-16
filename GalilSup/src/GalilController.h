@@ -141,14 +141,7 @@
 #define GalilMotorTypeString		"MOTOR_TYPE"
 #define GalilBrushTypeString		"BRUSH_TYPE"
 
-#define GalilHomingRoutineAString	"HMRNAM_A"
-#define GalilHomingRoutineBString	"HMRNAM_B"
-#define GalilHomingRoutineCString	"HMRNAM_C"
-#define GalilHomingRoutineDString	"HMRNAM_D"
-#define GalilHomingRoutineEString	"HMRNAM_E"
-#define GalilHomingRoutineFString	"HMRNAM_F"
-#define GalilHomingRoutineGString	"HMRNAM_G"
-#define GalilHomingRoutineHString	"HMRNAM_H"
+#define GalilHomingRoutineString     "HMRNAM"
 
 #define GalilEtherCatCapableString	"CONTROLLER_ECATCAPABLE"
 #define GalilEtherCatNetworkString	"CONTROLLER_ECAT_NETWORK"
@@ -704,14 +697,7 @@ protected:
   int GalilMotorDly_;
   int GalilMotorPosSyncTotal_;
 
-  int GalilHomingRoutineA_;
-  int GalilHomingRoutineB_;
-  int GalilHomingRoutineC_;
-  int GalilHomingRoutineD_;
-  int GalilHomingRoutineE_;
-  int GalilHomingRoutineF_;
-  int GalilHomingRoutineG_;
-  int GalilHomingRoutineH_;
+  int GalilHomingRoutine_;
 
   int GalilCommunicationError_;
   #define LAST_GALIL_PARAM GalilCommunicationError_
