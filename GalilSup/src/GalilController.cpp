@@ -1239,6 +1239,8 @@ void GalilController::setParamDefaults(void)
   setIntegerParam(GalilPVTCapable_, 0);
   //Communication status
   setIntegerParam(GalilCommunicationError_, 1);
+  // ethercat
+  setIntegerParam(GalilEtherCatCapable_, 0);
 
   //Deferred moves off 
   setIntegerParam(motorDeferMoves_, 0);
