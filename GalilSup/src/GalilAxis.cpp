@@ -259,6 +259,7 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
 
    setIntegerParam(pC_->motorStatusMoving_, 0);
    setIntegerParam(pC_->motorStatusDone_, 1);
+   setIntegerParam(pC_->GalilMotorConnected_, 0);
 
    //Motor not homing now
    //This flag does not include JAH

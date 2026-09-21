@@ -17,6 +17,8 @@ DBD += GalilSupport.dbd
 # For sCalcPostfix.h
 USR_INCLUDES += -I$(CALC)/calcApp/src
 
+#USR_CPPFLAGS += -DDEBUG_TIMING
+
 # The following are compiled and added to the Support library
 ifeq ($(HAVE_C++11), YES)
   #Require C++ 2011 standard compatibility

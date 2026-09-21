@@ -5651,16 +5651,24 @@ asynStatus GalilController::readDataRecord(char *input, unsigned bytesize)
   unsigned k = HEADER_BYTES;//Record byte counter
   bool recstart = false;//Header found
   unsigned readsize = bytesize;//Requested number of bytes may vary in tcp sync mode when unsolicited mesg
+  epicsTimeStamp ts1, ts2;
 
   for (;;)
      {
      nread = 0;
      //Read bytesize using octet interface and user supplied buffer
+     epicsTimeGetCurrent(&ts1);
      if (async_records_)
         status = pAsyncOctet_->read(pAsyncOctetPvt_, pasynUserAsyncGalil_, input, readsize, &nread, &eomReason);
      else
         status = pSyncOctet_->read(pSyncOctetPvt_, pasynUserSyncGalil_, input, readsize, &nread, &eomReason);
-
+     epicsTimeGetCurrent(&ts2);
+     double time_diff = epicsTimeDiffInSeconds(&ts2, &ts1);
+#ifdef DEBUG_TIMING
+     if (time_diff > pasynUserSyncGalil_->timeout / 2.0) {
+         std::cerr << "readDataRecord(): read took " << time_diff << " seconds, status=" << status << ", nbytes=" << nread << std::endl;
+     }
+#endif
      //Serial mode characters can arrive with nread = 1 but also with nread > 1 but less than readsize
      //UDP async mode unsolicited mesg always cause read (above) to return with nread set to mesg length
      //TCP sync mode unsolicited mesg sometimes cause read to return with nread set to mesg length
@@ -5712,6 +5720,10 @@ asynStatus GalilController::readDataRecord(char *input, unsigned bytesize)
                  int offset_to_header = i - HEADER_BYTES + 1; // location of found header in current input buffer
                  readsize = bytesize + offset_to_header; // nread will be subtracted later
                  memcpy(buf, input + offset_to_header, HEADER_BYTES);
+                 // until we have now confirmed it is a data record, some of the data record header
+                 // may have got interpreted as an unsolicited messag so reset out counter
+                 j = 0;
+                 mesg[j] = '\0';
                  }
               if (!recstart)
                  {
@@ -6014,6 +6026,7 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
   bool done = false;		//Read complete?
   bool term_done = false;   // found all terminators?
   size_t this_nread;
+  epicsTimeStamp ts1, ts2;
 
   //epicsGuard<epicsMutex> _lock(sync_writeReadLock_);
   *nread = 0;
@@ -6030,7 +6043,15 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
         {
         //Read any response
         this_nread = 0;
+        epicsTimeGetCurrent(&ts1);
         status = pSyncOctet_->read(pSyncOctetPvt_, pasynUserSyncGalil_, buf, MAX_GALIL_DATAREC_SIZE, &this_nread, &eomReason);
+        epicsTimeGetCurrent(&ts2);
+        double time_diff = epicsTimeDiffInSeconds(&ts2, &ts1);
+#ifdef DEBUG_TIMING
+        if (time_diff > pasynUserSyncGalil_->timeout / 2.0) {
+            std::cerr << "sync_writeReadController(): read took " << time_diff << " seconds, status=" << status << ", nbytes=" << this_nread << std::endl;
+        }
+#endif
         //If read successful, search for terminator characters
         if (!status && this_nread > 0)
            {
@@ -6104,12 +6125,16 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
            }
         else //Stop read if any asyn error
         {
-         if (j != 0) {
-             std::cerr << "sync_writeReadController(): after error - Discarded unsolicited message: " << mesg << " length " << j << std::endl;
+           if (j != 0 || m != 0) {
+             std::cerr << "sync_writeReadController(): discarded after error:";
+             if (j != 0) {
+                 std::cerr << " [unsolicited message: " << mesg << " length=" << j << "]";
              }
-         if (m != 0) {
-             std::cerr << "sync_writeReadController(): after error - Discarded bytes: " << rawToEscapedString(discard, m) << " length " << m << std::endl;
+             if (m != 0) {
+                 std::cerr << " [bytes: " << rawToEscapedString(discard, m) << " length=" << m << "]";
              }
+             std::cerr << std::endl;
+           }
            return asynError;
         }
         }//while (!done)
@@ -6118,16 +6143,20 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
      *nread = strlen(resp);
      //Check for any remaining unsolicited messages
      //Any here did not end in a \n - discard or send anyway?
-     if (j != 0) {
-         std::cerr << "sync_writeReadController(): after success - Discarded unsolicited message: " << mesg << " length " << j << std::endl;
-         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
-         //sendUnsolicitedMessage(mesg);
+     if (j != 0 || m != 0) {
+         std::cerr << "sync_writeReadController(): discarded after success:";
+         if (j != 0) {
+             std::cerr << " [unsolicited message: " << mesg << " length=" << j << "]";
+         }
+         if (m != 0) {
+             std::cerr << " [bytes: " << rawToEscapedString(discard, m) << " length=" << m << "]";
+         }
+         std::cerr << std::endl;
      }
-     if (m != 0) {
-         std::cerr << "sync_writeReadController(): after success - Discarded bytes: " << rawToEscapedString(discard, m) << " length " << m << std::endl;
-         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
-     }
-     }//write ok
+  }//write ok
+  else {
+     std::cerr << "sync_writeReadController(): write failed" << std::endl;
+  }
   return status;
 }
 
