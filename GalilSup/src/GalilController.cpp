@@ -495,6 +495,7 @@
 #include <iomanip> //format source keys
 #include <algorithm> //std::remove_if
 #include <atomic>
+#include <new>
 
 using namespace std; //cout ostringstream vector string
 
@@ -8349,6 +8350,14 @@ void GalilController::dq_analog(int byte, int input_num)
 	}
 }
 
+// created so we can set a breakpoint
+// if this function returns it gets called again so we revert to
+// old behaviour. We could throw std::bad_alloc
+static void galil_new_handler()
+{
+    std::set_new_handler(nullptr);
+}
+
 //IocShell functions
 
 /** Creates a new GalilController object.
@@ -8361,6 +8370,7 @@ void GalilController::dq_analog(int byte, int input_num)
   */
 extern "C" int GalilCreateController(const char *portName, const char *address, int updatePeriod, int quietStart)
 {
+  set_new_handler(galil_new_handler);
   new GalilController(portName, address, updatePeriod, quietStart);
   return(asynSuccess);
 }
