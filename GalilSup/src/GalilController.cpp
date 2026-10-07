@@ -1238,10 +1238,13 @@ void GalilController::setParamDefaults(void)
   setIntegerParam(GalilBISSCapable_, 0);
   //PVT capable
   setIntegerParam(GalilPVTCapable_, 0);
+  //EtherCat capable
+  setIntegerParam(GalilEtherCatCapable_, 0);
+
   //Communication status
   setIntegerParam(GalilCommunicationError_, 1);
-  // ethercat
-  setIntegerParam(GalilEtherCatCapable_, 0);
+  // User Array upload status
+  setIntegerParam(GalilUserArrayUpload_, 0);
 
   //Deferred moves off 
   setIntegerParam(motorDeferMoves_, 0);
@@ -1283,8 +1286,6 @@ void GalilController::setParamDefaults(void)
 
   //Default controller error message to null string
   setStringParam(0, GalilCtrlError_, "");
-
-  setIntegerParam(GalilUserArrayUpload_, 0);
 }
 
 // extract the controller ethernet address from the output of the galil TH command
@@ -3637,12 +3638,14 @@ asynStatus GalilController::setDeferredMoves(bool deferMoves)
   * \param[in] axisNo is asyn Param list number 0 - 7.  Controller wide values use list 0 */
 asynStatus GalilController::get_integer(int function, epicsInt32 *value, int axisNo = 0)
 {
-  asynStatus status;				 //Communication status.
-	
+  asynStatus status = asynSuccess; //Communication status.
+  // Attempt to obtain value from controller
   if ((status = sync_writeReadController()) == asynSuccess)
      *value = (epicsInt32)atoi(resp_);
-  else    //Comms error, return last ParamList value set using setIntegerParam
-     getIntegerParam(axisNo, function, value);
+  else {
+     //Comms error, return last ParamList value set using setIntegerParam
+     status = getIntegerParam(axisNo, function, value);
+  }
   return status;
 }
 
@@ -8370,7 +8373,7 @@ static void galil_new_handler()
   */
 extern "C" int GalilCreateController(const char *portName, const char *address, int updatePeriod, int quietStart)
 {
-  set_new_handler(galil_new_handler);
+  std::set_new_handler(galil_new_handler);
   new GalilController(portName, address, updatePeriod, quietStart);
   return(asynSuccess);
 }
@@ -8398,11 +8401,16 @@ extern "C" asynStatus GalilCreateAxis(const char *portName,        	/*specify wh
     return asynError;
   }
   
-  pC->lock();
+  if (pC->numAxes() < pC->numAxesMax()) {
+      pC->lock();
 
-  new GalilAxis(pC, axisname, enables_string, switch_type);
+      new GalilAxis(pC, axisname, enables_string, switch_type);
 
-  pC->unlock();
+      pC->unlock();
+  } else {
+      std::cerr << "WARNING: ignoring GalilCreateAxis('" << axisname << "') as would exceeded number of axes on controller (" << pC->numAxesMax() << ")" << std::endl;
+  }
+
   return asynSuccess;
 }
 

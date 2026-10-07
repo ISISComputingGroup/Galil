@@ -329,6 +329,13 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
    setPositionIn_ = false;
    setPositionOut_ = false;
 
+   //Axis position error
+   setDoubleParam(pC_->GalilError_, 0.0);
+   //Axis raw velocity
+   setDoubleParam(pC_->GalilMotorVelocityRAW_, 0.0);
+   //Axis connected status
+   setIntegerParam(pC_->GalilMotorConnected_, 0);
+
    //Default motor/axis related amplifier statuses
    setIntegerParam(pC_->GalilMotorHallErrorStatus_, 0);
    setIntegerParam(pC_->GalilMotorAtTorqueLimitStatus_, 0);

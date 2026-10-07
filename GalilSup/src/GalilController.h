@@ -521,6 +521,9 @@ public:
   asynStatus prepSyncStartStopMoves(void);
   asynStatus prepSyncStartOnlyMoves(void);
 
+  unsigned numAxesMax() { return numAxesMax_; }
+  unsigned numAxes() { return numAxes_;	}
+
   void shutdownController();
   virtual ~GalilController();
 
