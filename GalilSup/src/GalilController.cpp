@@ -3897,12 +3897,12 @@ asynStatus GalilController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   * \param[in] axisNo is asyn Param list number 0 - 7.  Controller wide values use list 0 */
 asynStatus GalilController::get_double(int function, epicsFloat64 *value, int axisNo = 0)
 {
-  asynStatus status;				 //Communication status.
+  asynStatus status = asynSuccess;	//Communication status.
 
   if ((status = sync_writeReadController()) == asynSuccess)
      *value = (epicsFloat64)atof(resp_);
   else    //Comms error, return last ParamList value set using setDoubleParam
-     getDoubleParam(axisNo, function, value);
+     status = getDoubleParam(axisNo, function, value);
   return status;
 }
 

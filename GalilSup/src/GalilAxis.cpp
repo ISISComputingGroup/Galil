@@ -259,7 +259,6 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
 
    setIntegerParam(pC_->motorStatusMoving_, 0);
    setIntegerParam(pC_->motorStatusDone_, 1);
-   setIntegerParam(pC_->GalilMotorConnected_, 0);
 
    //Motor not homing now
    //This flag does not include JAH
@@ -1867,8 +1866,8 @@ asynStatus GalilAxis::getStatus(void)
          strcpy(src, "_TEx");
          src[3] = axisName_;
          error_ = pC_->sourceValue(pC_->recdata_, src);
-         if ( pC_->getDoubleParam(axisNo_, pC_->GalilError_, &errorlast) ||
-             (error_ != errorlast) ) {
+         pC_->getDoubleParam(axisNo_, pC_->GalilError_, &errorlast);
+         if (error_ != errorlast) {
             pC_->setDoubleParam(axisNo_, pC_->GalilError_, error_);
          }
          //Servo motor velocity
@@ -1877,8 +1876,8 @@ asynStatus GalilAxis::getStatus(void)
          velocity_ = pC_->sourceValue(pC_->recdata_, src);
          //Adjust velocity given controller time base setting
          velocity_ *= pC_->timeMultiplier_;
-         if ( pC_->getDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, &velocitylast) ||
-              (velocity_ != velocitylast) ) {
+         pC_->getDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, &velocitylast);
+         if (velocity_ != velocitylast) {
             pC_->setDoubleParam(axisNo_, pC_->GalilMotorVelocityRAW_, velocity_);
             pC_->getDoubleParam(axisNo_, pC_->GalilEncoderResolution_, &eres);
             pC_->setDoubleParam(axisNo_, pC_->GalilMotorVelocityEGU_, velocity_ * eres);
