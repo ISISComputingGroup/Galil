@@ -3898,11 +3898,13 @@ asynStatus GalilController::readInt32(asynUser *pasynUser, epicsInt32 *value)
 asynStatus GalilController::get_double(int function, epicsFloat64 *value, int axisNo = 0)
 {
   asynStatus status = asynSuccess;	//Communication status.
-
+  // Attempt to obtain value from controller
   if ((status = sync_writeReadController()) == asynSuccess)
      *value = (epicsFloat64)atof(resp_);
-  else    //Comms error, return last ParamList value set using setDoubleParam
+  else {
+     //Comms error, return last ParamList value set using setDoubleParam
      status = getDoubleParam(axisNo, function, value);
+  }
   return status;
 }
 
