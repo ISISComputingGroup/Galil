@@ -495,6 +495,7 @@
 #include <iomanip> //format source keys
 #include <algorithm> //std::remove_if
 #include <atomic>
+#include <new>
 
 using namespace std; //cout ostringstream vector string
 
@@ -715,14 +716,7 @@ GalilController::GalilController(const char *portName, const char *address, doub
   createParam(GalilMotorTypeString, asynParamInt32, &GalilMotorType_);
   createParam(GalilBrushTypeString, asynParamInt32, &GalilBrushType_);
 
-  createParam(GalilHomingRoutineAString, asynParamOctet, &GalilHomingRoutineA_);
-  createParam(GalilHomingRoutineBString, asynParamOctet, &GalilHomingRoutineB_);
-  createParam(GalilHomingRoutineCString, asynParamOctet, &GalilHomingRoutineC_);
-  createParam(GalilHomingRoutineDString, asynParamOctet, &GalilHomingRoutineD_);
-  createParam(GalilHomingRoutineEString, asynParamOctet, &GalilHomingRoutineE_);
-  createParam(GalilHomingRoutineFString, asynParamOctet, &GalilHomingRoutineF_);
-  createParam(GalilHomingRoutineGString, asynParamOctet, &GalilHomingRoutineG_);
-  createParam(GalilHomingRoutineHString, asynParamOctet, &GalilHomingRoutineH_);
+  createParam(GalilHomingRoutineString, asynParamOctet, &GalilHomingRoutine_);
 
   createParam(GalilEtherCatCapableString, asynParamInt32, &GalilEtherCatCapable_);
   createParam(GalilEtherCatNetworkString, asynParamInt32, &GalilEtherCatNetwork_);
@@ -1244,8 +1238,13 @@ void GalilController::setParamDefaults(void)
   setIntegerParam(GalilBISSCapable_, 0);
   //PVT capable
   setIntegerParam(GalilPVTCapable_, 0);
+  //EtherCat capable
+  setIntegerParam(GalilEtherCatCapable_, 0);
+
   //Communication status
   setIntegerParam(GalilCommunicationError_, 1);
+  // User Array upload status
+  setIntegerParam(GalilUserArrayUpload_, 0);
 
   //Deferred moves off 
   setIntegerParam(motorDeferMoves_, 0);
@@ -3639,12 +3638,14 @@ asynStatus GalilController::setDeferredMoves(bool deferMoves)
   * \param[in] axisNo is asyn Param list number 0 - 7.  Controller wide values use list 0 */
 asynStatus GalilController::get_integer(int function, epicsInt32 *value, int axisNo = 0)
 {
-  asynStatus status;				 //Communication status.
-	
+  asynStatus status = asynSuccess; //Communication status.
+  // Attempt to obtain value from controller
   if ((status = sync_writeReadController()) == asynSuccess)
      *value = (epicsInt32)atoi(resp_);
-  else    //Comms error, return last ParamList value set using setIntegerParam
-     getIntegerParam(axisNo, function, value);
+  else {
+     //Comms error, return last ParamList value set using setIntegerParam
+     status = getIntegerParam(axisNo, function, value);
+  }
   return status;
 }
 
@@ -3896,12 +3897,14 @@ asynStatus GalilController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   * \param[in] axisNo is asyn Param list number 0 - 7.  Controller wide values use list 0 */
 asynStatus GalilController::get_double(int function, epicsFloat64 *value, int axisNo = 0)
 {
-  asynStatus status;				 //Communication status.
-
+  asynStatus status = asynSuccess;	//Communication status.
+  // Attempt to obtain value from controller
   if ((status = sync_writeReadController()) == asynSuccess)
      *value = (epicsFloat64)atof(resp_);
-  else    //Comms error, return last ParamList value set using setDoubleParam
-     getDoubleParam(axisNo, function, value);
+  else {
+     //Comms error, return last ParamList value set using setDoubleParam
+     status = getDoubleParam(axisNo, function, value);
+  }
   return status;
 }
 
@@ -4879,14 +4882,6 @@ asynStatus GalilController::writeOctet(asynUser *pasynUser, const char*  value, 
            }
         }
      }
-  else if (function >= GalilHomingRoutineA_ && function <= GalilHomingRoutineH_)
-     {
-      GalilAxis* pAxis = getAxis(pasynUser);	//Retrieve the axis instance
-      if (pAxis != nullptr) {
-          std::string homingRoutineName = pAxis->homingRoutineName;
-          setStringParam(function, homingRoutineName);
-      }
-     }
   else if (function >= GalilCSMotorForward_ && function <= GalilCSMotorReverseH_)
      {
      //User has entered a new kinematic transform equation
@@ -5662,16 +5657,24 @@ asynStatus GalilController::readDataRecord(char *input, unsigned bytesize)
   unsigned k = HEADER_BYTES;//Record byte counter
   bool recstart = false;//Header found
   unsigned readsize = bytesize;//Requested number of bytes may vary in tcp sync mode when unsolicited mesg
+  epicsTimeStamp ts1, ts2;
 
   for (;;)
      {
      nread = 0;
      //Read bytesize using octet interface and user supplied buffer
+     epicsTimeGetCurrent(&ts1);
      if (async_records_)
         status = pAsyncOctet_->read(pAsyncOctetPvt_, pasynUserAsyncGalil_, input, readsize, &nread, &eomReason);
      else
         status = pSyncOctet_->read(pSyncOctetPvt_, pasynUserSyncGalil_, input, readsize, &nread, &eomReason);
-
+     epicsTimeGetCurrent(&ts2);
+     double time_diff = epicsTimeDiffInSeconds(&ts2, &ts1);
+#ifdef DEBUG_TIMING
+     if (time_diff > pasynUserSyncGalil_->timeout / 2.0) {
+         std::cerr << "readDataRecord(): read took " << time_diff << " seconds, status=" << status << ", nbytes=" << nread << std::endl;
+     }
+#endif
      //Serial mode characters can arrive with nread = 1 but also with nread > 1 but less than readsize
      //UDP async mode unsolicited mesg always cause read (above) to return with nread set to mesg length
      //TCP sync mode unsolicited mesg sometimes cause read to return with nread set to mesg length
@@ -5723,6 +5726,10 @@ asynStatus GalilController::readDataRecord(char *input, unsigned bytesize)
                  int offset_to_header = i - HEADER_BYTES + 1; // location of found header in current input buffer
                  readsize = bytesize + offset_to_header; // nread will be subtracted later
                  memcpy(buf, input + offset_to_header, HEADER_BYTES);
+                 // until we have now confirmed it is a data record, some of the data record header
+                 // may have got interpreted as an unsolicited messag so reset out counter
+                 j = 0;
+                 mesg[j] = '\0';
                  }
               if (!recstart)
                  {
@@ -6025,6 +6032,7 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
   bool done = false;		//Read complete?
   bool term_done = false;   // found all terminators?
   size_t this_nread;
+  epicsTimeStamp ts1, ts2;
 
   //epicsGuard<epicsMutex> _lock(sync_writeReadLock_);
   *nread = 0;
@@ -6041,7 +6049,15 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
         {
         //Read any response
         this_nread = 0;
+        epicsTimeGetCurrent(&ts1);
         status = pSyncOctet_->read(pSyncOctetPvt_, pasynUserSyncGalil_, buf, MAX_GALIL_DATAREC_SIZE, &this_nread, &eomReason);
+        epicsTimeGetCurrent(&ts2);
+        double time_diff = epicsTimeDiffInSeconds(&ts2, &ts1);
+#ifdef DEBUG_TIMING
+        if (time_diff > pasynUserSyncGalil_->timeout / 2.0) {
+            std::cerr << "sync_writeReadController(): read took " << time_diff << " seconds, status=" << status << ", nbytes=" << this_nread << std::endl;
+        }
+#endif
         //If read successful, search for terminator characters
         if (!status && this_nread > 0)
            {
@@ -6115,12 +6131,16 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
            }
         else //Stop read if any asyn error
         {
-         if (j != 0) {
-             std::cerr << "sync_writeReadController(): after error - Discarded unsolicited message: " << mesg << " length " << j << std::endl;
+           if (j != 0 || m != 0) {
+             std::cerr << "sync_writeReadController(): discarded after error:";
+             if (j != 0) {
+                 std::cerr << " [unsolicited message: " << mesg << " length=" << j << "]";
              }
-         if (m != 0) {
-             std::cerr << "sync_writeReadController(): after error - Discarded bytes: " << rawToEscapedString(discard, m) << " length " << m << std::endl;
+             if (m != 0) {
+                 std::cerr << " [bytes: " << rawToEscapedString(discard, m) << " length=" << m << "]";
              }
+             std::cerr << std::endl;
+           }
            return asynError;
         }
         }//while (!done)
@@ -6129,16 +6149,20 @@ asynStatus GalilController::sync_writeReadController(const char *output, char *i
      *nread = strlen(resp);
      //Check for any remaining unsolicited messages
      //Any here did not end in a \n - discard or send anyway?
-     if (j != 0) {
-         std::cerr << "sync_writeReadController(): after success - Discarded unsolicited message: " << mesg << " length " << j << std::endl;
-         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
-         //sendUnsolicitedMessage(mesg);
+     if (j != 0 || m != 0) {
+         std::cerr << "sync_writeReadController(): discarded after success:";
+         if (j != 0) {
+             std::cerr << " [unsolicited message: " << mesg << " length=" << j << "]";
+         }
+         if (m != 0) {
+             std::cerr << " [bytes: " << rawToEscapedString(discard, m) << " length=" << m << "]";
+         }
+         std::cerr << std::endl;
      }
-     if (m != 0) {
-         std::cerr << "sync_writeReadController(): after success - Discarded bytes: " << rawToEscapedString(discard, m) << " length " << m << std::endl;
-         //std::cerr << "\"" << output << "\" \"" << input << "\"" << std::endl;
-     }
-     }//write ok
+  }//write ok
+  else {
+     std::cerr << "sync_writeReadController(): write failed" << std::endl;
+  }
   return status;
 }
 
@@ -6912,10 +6936,10 @@ void GalilController::GalilStartController(char *code_file, int burn_program, in
        pAxis = getAxis(axisList_[i] - AASCII);
        if (!pAxis) continue;
        if (i < homingRoutineNames.size()) {
-           pAxis->homingRoutineName = homingRoutineNames[i];
+           pAxis->setStringParam(GalilHomingRoutine_, homingRoutineNames[i].c_str());
        }
        else {
-           pAxis->homingRoutineName = "";
+           pAxis->setStringParam(GalilHomingRoutine_, "");
        }
    }
 
@@ -7096,7 +7120,6 @@ void GalilController::GalilStartController(char *code_file, int burn_program, in
          pAxis->limitsDirState_ = unknown;
          //Pass motor/limits consistency to paramList
          setIntegerParam(pAxis->axisNo_, GalilLimitConsistent_, pAxis->limitsDirState_);
-         pAxis->homingRoutineName = homingRoutineNames[i];
       }
 
       //Retrieve controller time base
@@ -7569,37 +7592,37 @@ void GalilController::InitializeDataRecord(void)
 
 double GalilController::sourceValue(const std::vector<char>& record, const std::string& source)
 {
-	try
-	{
-		const Source& s = map.at(source); //use at() function so silent insert does not occur if bad source string is used.
-		int return_value = 0;
-		if (s.type[0] == 'U')  //unsigned
-			switch (s.type[1])
-		{
-			case 'B':  return_value = *(unsigned char*)(&record[s.byte]);  break;
-			case 'W':  return_value = *(unsigned short*)(&record[s.byte]);  break;
-			case 'L':  return_value = *(unsigned int*)(&record[s.byte]);  break;
-		}
-		else //s.type[0] == 'S'  //signed
-			switch (s.type[1])
-		{
-			case 'B':  return_value = *(char*)(&record[s.byte]);  break;
-			case 'W':  return_value = *(short*)(&record[s.byte]);  break;
-			case 'L':  return_value = *(int*)(&record[s.byte]);  break;
-		}
+    // want to avoid silent insert if bad source string is used.
+    const auto it = map.find(source);
+    if (it == map.end())
+    {
+        return 0.0; // bad source
+    }
+    const Source& s = it->second;
+    int return_value = 0;
+    if (s.type[0] == 'U')  //unsigned
+        switch (s.type[1])
+    {
+        case 'B':  return_value = *(unsigned char*)(&record[s.byte]);  break;
+        case 'W':  return_value = *(unsigned short*)(&record[s.byte]);  break;
+        case 'L':  return_value = *(unsigned int*)(&record[s.byte]);  break;
+    }
+    else //s.type[0] == 'S'  //signed
+        switch (s.type[1])
+    {
+        case 'B':  return_value = *(char*)(&record[s.byte]);  break;
+        case 'W':  return_value = *(short*)(&record[s.byte]);  break;
+        case 'L':  return_value = *(int*)(&record[s.byte]);  break;
+    }
 
-		if (s.bit >= 0) //this is a bit field
-		{
-			bool bTRUE = s.scale > 0; //invert logic if scale is <= 0  
-			return return_value & (1 << s.bit) ? bTRUE : !bTRUE; //check the bit
-		}
-		else
-			return (return_value / s.scale) + s.offset;
-
-	}
-	catch (const std::out_of_range& e) //bad source
-	{
-		return 0.0;
+    if (s.bit >= 0) //this is a bit field
+    {
+        bool bTRUE = s.scale > 0; //invert logic if scale is <= 0  
+        return return_value & (1 << s.bit) ? bTRUE : !bTRUE; //check the bit
+    }
+    else
+    {
+        return (return_value / s.scale) + s.offset;
 	}
 }
 
@@ -8332,6 +8355,14 @@ void GalilController::dq_analog(int byte, int input_num)
 	}
 }
 
+// created so we can set a breakpoint
+// if this function returns it gets called again so we revert to
+// old behaviour. We could throw std::bad_alloc
+static void galil_new_handler()
+{
+    std::set_new_handler(nullptr);
+}
+
 //IocShell functions
 
 /** Creates a new GalilController object.
@@ -8344,6 +8375,7 @@ void GalilController::dq_analog(int byte, int input_num)
   */
 extern "C" int GalilCreateController(const char *portName, const char *address, int updatePeriod, int quietStart)
 {
+  std::set_new_handler(galil_new_handler);
   new GalilController(portName, address, updatePeriod, quietStart);
   return(asynSuccess);
 }
@@ -8370,12 +8402,16 @@ extern "C" asynStatus GalilCreateAxis(const char *portName,        	/*specify wh
     printf("%s:%s: Error port %s not found\n", driverName, functionName, portName);
     return asynError;
   }
-  
+
+  // numAxes is incremented by GalilAxis constructor
+  if (pC->numAxes() >= pC->numAxesMax()) {
+      std::cerr << "WARNING: calling GalilCreateAxis('" << axisname << "') exceeds number of axes on controller (" << pC->numAxesMax() << ")" << std::endl;
+  }
+
   pC->lock();
-
   new GalilAxis(pC, axisname, enables_string, switch_type);
-
   pC->unlock();
+
   return asynSuccess;
 }
 

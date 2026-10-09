@@ -54,7 +54,7 @@ static void eventMonitorThreadC(void *pPvt);
 GalilCSAxis::GalilCSAxis(class GalilController *pC, 	//The GalilController
 	     char axisname)
   : asynMotorAxis(pC, (toupper(axisname) - AASCII)),
-    pC_(pC), pollRequest_(10, sizeof(int))
+    pC_(pC), pollRequest_(10, sizeof(int)), last_done_(1), done_(1)
 {
   unsigned i;
   //store axis details
@@ -208,6 +208,10 @@ asynStatus GalilCSAxis::setDefaults(void)
   setDoubleParam(pC_->motorEncoderPosition_, encoder_position_);
   //Pass default direction value to motorRecord
   setIntegerParam(pC_->motorStatusDirection_, direction_);
+
+  setIntegerParam(pC_->motorStatusMoving_, 0);
+  setIntegerParam(pC_->motorStatusDone_, 1);
+
   //Motor not homing now
   //This flag does include JAH
   setIntegerParam(pC_->GalilHoming_, 0);

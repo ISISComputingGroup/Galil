@@ -225,8 +225,6 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
    //Default event timeout
    requestedTimeout_ = BEGIN_TIMEOUT * multiplier;
 
-   homingRoutineName = "";
-
    //Store switch type setting for motor enable/disable function			       
    switch_type_ = (switch_type > 0) ? 1 : 0;
 
@@ -329,6 +327,13 @@ asynStatus GalilAxis::setDefaults(char *enables_string, int switch_type)
    //Operator has not used MR SET field yet
    setPositionIn_ = false;
    setPositionOut_ = false;
+
+   //Axis position error
+   setDoubleParam(pC_->GalilError_, 0.0);
+   //Axis raw velocity
+   setDoubleParam(pC_->GalilMotorVelocityRAW_, 0.0);
+   //Axis connected status
+   setIntegerParam(pC_->GalilMotorConnected_, 0);
 
    //Default motor/axis related amplifier statuses
    setIntegerParam(pC_->GalilMotorHallErrorStatus_, 0);
@@ -1862,8 +1867,9 @@ asynStatus GalilAxis::getStatus(void)
          src[3] = axisName_;
          error_ = pC_->sourceValue(pC_->recdata_, src);
          pC_->getDoubleParam(axisNo_, pC_->GalilError_, &errorlast);
-         if (error_ != errorlast)
+         if (error_ != errorlast) {
             pC_->setDoubleParam(axisNo_, pC_->GalilError_, error_);
+         }
          //Servo motor velocity
          strcpy(src, "_TVx");
          src[3] = axisName_;
@@ -3602,8 +3608,8 @@ void GalilAxis::axisStatusThread()
 
   while (true) {
     //Retrieve required parameters
-    status = pC_->getIntegerParam(axisNo_, pC_->GalilSSICapable_, &ssiCapable);
-    status |= pC_->getIntegerParam(axisNo_, pC_->GalilBISSCapable_, &bissCapable);
+    status = pC_->getIntegerParam(pC_->GalilSSICapable_, &ssiCapable);
+    status |= pC_->getIntegerParam(pC_->GalilBISSCapable_, &bissCapable);
 
     if (event == epicsEventWaitTimeout && !shuttingDown_) {
        if (ssiCapable == 1 && !status && !shuttingDown_) {
