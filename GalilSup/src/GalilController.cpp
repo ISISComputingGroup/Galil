@@ -8400,16 +8400,15 @@ extern "C" asynStatus GalilCreateAxis(const char *portName,        	/*specify wh
     printf("%s:%s: Error port %s not found\n", driverName, functionName, portName);
     return asynError;
   }
-  
-  if (pC->numAxes() < pC->numAxesMax()) {
-      pC->lock();
 
-      new GalilAxis(pC, axisname, enables_string, switch_type);
-
-      pC->unlock();
-  } else {
-      std::cerr << "WARNING: ignoring GalilCreateAxis('" << axisname << "') as would exceeded number of axes on controller (" << pC->numAxesMax() << ")" << std::endl;
+  // numAxes is incremented by GalilAxis constructor
+  if (pC->numAxes() >= pC->numAxesMax()) {
+      std::cerr << "WARNING: calling GalilCreateAxis('" << axisname << "') exceeds number of axes on controller (" << pC->numAxesMax() << ")" << std::endl;
   }
+
+  pC->lock();
+  new GalilAxis(pC, axisname, enables_string, switch_type);
+  pC->unlock();
 
   return asynSuccess;
 }
