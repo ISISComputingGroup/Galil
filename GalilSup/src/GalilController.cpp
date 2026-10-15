@@ -8403,12 +8403,11 @@ extern "C" asynStatus GalilCreateAxis(const char *portName,        	/*specify wh
     return asynError;
   }
 
+  pC->lock();
   // numAxes is incremented by GalilAxis constructor
-  if (pC->numAxes() >= pC->numAxesMax()) {
+  if (pC->numAxesMax() > 0 && pC->numAxes() >= pC->numAxesMax()) {
       std::cerr << "WARNING: calling GalilCreateAxis('" << axisname << "') exceeds number of axes on controller (" << pC->numAxesMax() << ")" << std::endl;
   }
-
-  pC->lock();
   new GalilAxis(pC, axisname, enables_string, switch_type);
   pC->unlock();
 
