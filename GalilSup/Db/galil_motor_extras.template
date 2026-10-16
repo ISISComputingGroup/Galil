@@ -1748,15 +1748,16 @@ record(stringout,"$(P)$(M)_MOVE_CMD")
 
 ##
 ## calculate the live difference between motor and encoder position
+## if this is a stepper motor (motor type >=2 && <=5)
 ## only calculate if UEIP (E) is true and an encoder is also actually
 ## present (as per relevant MSTA bit, F&256)
 ## In addition only calculate when moving (G == 0) to avoid noisy
 ## encoder post move triggering recording. Store calculation
-## result in H so if moving (G != 0) can return previous calc value
+## result in I so if moving (G != 0) can return previous calc value
 ##
 record(calcout,"$(P)$(M)_MTRENC_DIFF")
 {
-	field(DESC, "In motion encoder motor difference")
+	field(DESC, "In motion stepper encoder motor diff")
 	field(INPA, "$(P)$(M).RMP CP")
 	field(INPB, "$(P)$(M).MRES CP")
 	field(INPC, "$(P)$(M).REP CP")
@@ -1764,7 +1765,8 @@ record(calcout,"$(P)$(M)_MTRENC_DIFF")
 	field(INPE, "$(P)$(M).UEIP CP")
 	field(INPF, "$(P)$(M).MSTA CP")
 	field(INPG, "$(P)$(M).DMOV CP")
-	field(CALC, "H:=(G=0?((E&&(F&256))?(ABS(A*B)-ABS(C*D)):0):H);H")
+	field(INPH, "$(P)$(M)_MTRTYPE_STATUS CP")
+	field(CALC, "I:=(H>=2&&H<=5&&E&&(F&256))?(G=0?(ABS(A*B)-ABS(C*D)):I):0;I")
 }
 
 ##
